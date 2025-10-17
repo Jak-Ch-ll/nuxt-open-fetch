@@ -5,6 +5,7 @@ import type { Hookable } from 'hookable'
 import type { FetchContext, FetchError, FetchHooks, FetchOptions } from 'ofetch'
 import type {
   ErrorResponse,
+  HttpMethod,
   MediaType,
   OkStatus,
   OperationRequestBodyContent,
@@ -42,6 +43,128 @@ export type ExtractMediaType<T> = ResponseObjectMap<T> extends Record<string | n
   ? { [S in OkStatus]: Extract<keyof ResponseContent<ResponseObjectMap<T>[S]>, MediaType> }[OkStatus]
   : never
 
+type Body = FetchOptions['body']
+
+export interface DefaultFetchOptions extends FetchOptions {
+  path?: Record<string, string | number> | undefined
+  accept?: MediaType | MediaType[] | undefined
+  bodySerializer?: ((body: Body) => Body) | undefined
+}
+
+/**
+ * From:
+ * ```ts
+ * type Path = {
+ *    get: { foo: string },
+ *    post: { bar: string }
+ * }
+ * ```
+ *
+ * To:
+ * ```ts
+ * type Union = { method: 'get', foo: string } | { method: 'post', bar: string }
+ * ```
+ */
+type PathToUnion<TPath extends Record<string, any>> = ToUnion<InlineMethod<TPath>>
+
+/**
+ * From:
+ * ```ts
+ * type Path = {
+ *    get: { foo: string },
+ *    post: { bar: string },
+ * }
+ * ```
+ *
+ * To:
+ * ```ts
+ * type Inlined = {
+ *  get: { method: 'get', foo: string },
+ *  post: { method: 'post', bar: string },
+ * }
+ * ```
+ */
+type InlineMethod<TPath extends Record<string, any>> = {
+  [Key in keyof TPath as Key extends HttpMethod ? Key : never]: AddMethod<Key & HttpMethod>
+    & ExtractParameters<TPath[Key]>
+    & ExtractRequestBody<TPath[Key]>
+    // & ExtractMediaType2<ExtractMediaType<TPath[Key]>>
+    & ExtractMediaType2<TPath[Key]>
+}
+
+type AddMethod<TMethod extends HttpMethod> = TMethod extends 'get' ? { method?: TMethod | Uppercase<TMethod> } : { method: TMethod | Uppercase<TMethod> }
+
+type ToUnion<T extends Record<any, any>> = T[keyof T]
+
+/**
+ * From:
+ * ```ts
+ * type Operation = {
+ *    parameters: {
+ *      query?: {};
+ *      header?: {};
+ *      path?: {};
+ *      cookie?: {};
+ *    };
+ *    requestBody: {
+ *      content: {
+ *        "application/json": {};
+ *      };
+ *    };
+ * }
+ * ```
+ *
+ * To:
+ * ```ts
+ * type Transformed = {
+ *   query?: {};
+ *   header?: {};
+ *   path?: {};
+ *   cookie?: {};
+ *   body: {};
+ * }
+ * ```
+ *
+ */
+type ExtractParameters<T> = T extends { parameters: any } ? T['parameters'] : {}
+// : {
+//   query?: never
+//   header?: never
+//   path?: never
+//   cookie?: never
+// }
+
+type ExtractRequestBody<T> = T extends { requestBody: { content: { [key: string]: any } } } ? {
+  body: OperationRequestBodyContent<T>
+  bodySerializer?: (body: OperationRequestBodyContent<T>) => any
+} : {}
+// { body?: never, bodySerializer?: never }
+
+export type ExtractMediaType2<T> = T extends { responses: {
+  [key in OkStatus]?: { content: { [key in infer Media]: any } }
+} } ? { accept?: Media | Media[] } : {}
+// : { accept?: never }
+
+// export type ExtractMediaType2<TMedia> = TMedia extends string ? { accept?: TMedia | TMedia[] } : {}
+
+type Merge<T, U> = Prettify<Omit<T, keyof U> & U>
+
+type Prettify<T> = {
+  [K in keyof T]: T[K]
+} & {}
+
+export type OpenFetchOptions2<
+  TPaths extends Record<any, any>,
+  TPath extends keyof TPaths,
+> = keyof TPaths extends never ? DefaultFetchOptions
+  : keyof TPaths[TPath] extends never ? DefaultFetchOptions
+    : Merge<DefaultFetchOptions, PathToUnion<TPaths[TPath]>>
+
+type RemoveNeverValues<T> = {
+  [Key in keyof T as T[Key] extends never ? never : Key]: T[Key]
+}
+// ######
+
 type OpenFetchOptions<
   Method,
   LowercasedMethod,
@@ -54,9 +177,23 @@ type OpenFetchOptions<
 = MethodOption<Method, Params>
   & ParamsOption<Operation>
   & RequestBodyOption<Operation>
+  // & { body?: any }
   & AcceptMediaTypeOption<Media>
+  // & { accept?: any }
   & Omit<FetchOptions, 'query' | 'body' | 'method'>
   & BodySerializerOption<RequestBodyOption<Operation>['body']>
+
+interface InternalOptions<TPaths, TPath extends keyof TPaths> {}
+
+const paths = {
+
+}
+
+// type TargetOptions = {
+//   method:
+// }
+//
+type ExportedOptions<TPath extends keyof typeof paths> = InternalOptions<typeof paths, TPath>
 
 export type OpenFetchClient<Paths> = <
   ReqT extends Extract<keyof Paths, string>,

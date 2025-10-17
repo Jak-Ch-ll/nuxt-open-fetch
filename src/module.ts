@@ -1,6 +1,7 @@
 import type { Readable } from 'node:stream'
 import type { FetchOptions } from 'ofetch'
 import type { OpenAPI3, OpenAPITSOptions } from 'openapi-typescript'
+import type { OpenFetchOptions2 } from './runtime/fetch'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -24,6 +25,7 @@ import { name, version } from '../package.json'
 type OpenAPI3Schema = string | URL | OpenAPI3 | Readable
 
 export interface OpenFetchOptions extends Pick<FetchOptions, 'baseURL' | 'query' | 'headers'> { }
+export { type OpenFetchOptions2 }
 
 export interface OpenFetchClientOptions extends OpenFetchOptions {
   schema?: OpenAPI3Schema
