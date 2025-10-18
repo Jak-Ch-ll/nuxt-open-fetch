@@ -13,6 +13,7 @@ import type {
   ResponseObjectMap,
   SuccessResponse,
 } from 'openapi-typescript-helpers'
+import type { Merge, RemoveNeverValues, ToUnion } from './types/utils'
 
 type Hooks = Hookable<GlobalFetchHooks & ClientFetchHooks> | null
 
@@ -43,178 +44,6 @@ export type ExtractMediaType<T> = ResponseObjectMap<T> extends Record<string | n
   ? { [S in OkStatus]: Extract<keyof ResponseContent<ResponseObjectMap<T>[S]>, MediaType> }[OkStatus]
   : never
 
-type Body = FetchOptions['body']
-
-export interface DefaultFetchOptions extends FetchOptions {
-  path?: Record<string, string | number> | undefined
-  accept?: MediaType | MediaType[] | undefined
-  bodySerializer?: ((body: Body) => Body) | undefined
-}
-
-/**
- * From:
- * ```ts
- * type Path = {
- *    get: { foo: string },
- *    post: { bar: string }
- * }
- * ```
- *
- * To:
- * ```ts
- * type Union = { method: 'get', foo: string } | { method: 'post', bar: string }
- * ```
- */
-type PathToUnion<TPath extends Record<string, any>> = ToUnion<InlineMethod<TPath>>
-
-/**
- * From:
- * ```ts
- * type Path = {
- *    get: { foo: string },
- *    post: { bar: string },
- * }
- * ```
- *
- * To:
- * ```ts
- * type Inlined = {
- *  get: { method: 'get', foo: string },
- *  post: { method: 'post', bar: string },
- * }
- * ```
- */
-type InlineMethod<TPath extends { [method in HttpMethod]?: unknown }> = {
-  [KMethod in keyof TPath]: KMethod extends HttpMethod
-    ? TransformOperation<KMethod, TPath[KMethod]>
-    : never
-}
-
-type TransformOperation<TMethod extends HttpMethod, TOperation> = AddMethod<TMethod>
-  & ExtractParameters<TOperation>
-  & ExtractRequestBody<TOperation>
-  & ExtractMediaType2<TOperation>
-
-type AddMethod<TMethod extends HttpMethod> = TMethod extends 'get' ? { method?: TMethod | Uppercase<TMethod> } : { method: TMethod | Uppercase<TMethod> }
-
-type ToUnion<T extends Record<any, any>> = T[keyof T]
-
-/**
- * From:
- * ```ts
- * type Operation = {
- *    parameters: {
- *      query?: {};
- *      header?: {};
- *      path?: {};
- *      cookie?: {};
- *    };
- *    requestBody: {
- *      content: {
- *        "application/json": {};
- *      };
- *    };
- * }
- * ```
- *
- * To:
- * ```ts
- * type Transformed = {
- *   query?: {};
- *   header?: {};
- *   path?: {};
- *   cookie?: {};
- *   body: {};
- * }
- * ```
- *
- */
-type ExtractParameters<TOperation> = TOperation extends { parameters: unknown }
-  ? TOperation['parameters']
-  : unknown
-
-type F<T> = [T] extends [{ foo?: string }] ? 'foo' : 'bar'
-
-type T = F<{}>
-
-type KeysTest = keyof {
-  foo?: string
-  // bar: number
-}
-
-type KeyTest = ['foo'] extends [KeysTest] ? true : false
-type GenericKeyTest<T> = 'foo' extends T ? true : false
-type GenTest = GenericKeyTest<KeyTest>
-
-type ExtractRequestBody<T> = T extends { requestBody: { content: { [key: string]: any } } } ? {
-  body: OperationRequestBodyContent<T>
-  bodySerializer?: (body: OperationRequestBodyContent<T>) => any
-}
-  : 'requestBody' extends keyof T ? {
-    body?: OperationRequestBodyContent<T>
-    bodySerializer?: (body: NonNullable<OperationRequestBodyContent<T>>) => any
-  } : unknown
-// { body?: never, bodySerializer?: never }
-
-// use this for bodySerializer stuff:
-type HasOnlyOneKey<T, K extends keyof T>
-  = keyof T extends [K] ? true : false
-
-export type ExtractMediaType2<T> = T extends {
-  responses: {
-    [key in OkStatus]?: { content: { [key in infer Media]: any } }
-  }
-} ? { accept?: Media | Media[] } : unknown
-// : { accept?: never }
-
-// export type ExtractMediaType2<TMedia> = TMedia extends string ? { accept?: TMedia | TMedia[] } : {}
-
-type Merge<T, U> = Prettify<Omit<T, keyof U> & U>
-
-type Prettify<T> = {
-  [K in keyof T]: T[K]
-} & {}
-
-export type OpenFetchOptions2<
-  TPaths extends Record<any, any>,
-  TPath extends keyof TPaths,
-> = keyof TPaths extends never ? DefaultFetchOptions
-  : keyof TPaths[TPath] extends never ? DefaultFetchOptions
-    : Merge<DefaultFetchOptions, PathToUnion<TPaths[TPath]>>
-
-type RemoveNeverValues<T> = {
-  [Key in keyof T as T[Key] extends never ? never : Key]: T[Key]
-}
-
-type TransformPathOptions<TPath> = any
-
-interface GenericPathsObject {
-  [path: string]: {
-    [method in HttpMethod]?: unknown
-  }
-}
-
-export type OpenFetchOptionsPaths<
-  TPaths,
-> = {
-  [TPath in keyof TPaths]: Merge<DefaultFetchOptions, PathToUnion<RemoveNeverValues<TPaths[TPath]>>>
-  // [TPath in keyof TPaths]: TPaths[TPath] extends { [method in HttpMethod]?: unknown }
-  //   ? Merge<DefaultFetchOptions, PathToUnion<RemoveNeverValues<TPaths[TPath]>>>
-  //   : never
-
-  // ? AddMethod<
-  //   ? 'get' extends Method
-  //     ? { method?: Method }
-  //     : { method: Method }
-  // // ? Merge<DefaultFetchOptions, { method?: Method }>
-  // // : Merge<DefaultFetchOptions, { method: Method }>
-  //   : DefaultFetchOptions
-  // : DefaultFetchOptions
-  // // ? { metho: Method }
-  // // ? Merge<DefaultFetchOptions, { method: Method }>
-  // // : DefaultFetchOptions
-}
-
 // ######
 
 type OpenFetchOptions<
@@ -234,18 +63,6 @@ type OpenFetchOptions<
   // & { accept?: any }
   & Omit<FetchOptions, 'query' | 'body' | 'method'>
   & BodySerializerOption<RequestBodyOption<Operation>['body']>
-
-interface InternalOptions<TPaths, TPath extends keyof TPaths> { }
-
-const paths = {
-
-}
-
-// type TargetOptions = {
-//   method:
-// }
-//
-type ExportedOptions<TPath extends keyof typeof paths> = InternalOptions<typeof paths, TPath>
 
 export type OpenFetchClient<Paths> = <
   ReqT extends Extract<keyof Paths, string>,

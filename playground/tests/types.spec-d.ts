@@ -2,6 +2,7 @@ import type { paths } from '#open-fetch-schemas/api'
 import type { OpenFetchOptionsPaths } from 'nuxt-open-fetch'
 import type { FetchOptions } from 'ofetch'
 import type { MediaType } from 'openapi-typescript-helpers'
+import type { O } from 'vitest/dist/chunks/reporters.d.BFLkQcL6.js'
 import type { Ref } from 'vue'
 import { describe, expectTypeOf, it } from 'vitest'
 import { createOpenFetch } from '../../src/runtime/fetch'
@@ -68,8 +69,8 @@ describe('type OpenFetchOptionsPaths', () => {
 
   it('Outputs in `never` for malformed paths', () => {
     interface Paths {
-      '/foo': any
-      '/bar': any
+      '/foo': unknown
+      '/bar': unknown
     }
     type Output = OpenFetchOptionsPaths<Paths>
 
@@ -79,7 +80,7 @@ describe('type OpenFetchOptionsPaths', () => {
 
   it('fails on non-existing paths', () => {
     interface Paths {
-      '/foo': Record<string, never>
+      '/foo': unknown
     }
     type Output = OpenFetchOptionsPaths<Paths>
 
@@ -115,6 +116,7 @@ describe('type OpenFetchOptionsPaths', () => {
       '/foo': {
         get: unknown
         post: never
+        put?: never
       }
     }
 
