@@ -84,13 +84,16 @@ type PathToUnion<TPath extends Record<string, any>> = ToUnion<InlineMethod<TPath
  * }
  * ```
  */
-type InlineMethod<TPath extends Record<string, any>> = {
-  [Key in keyof TPath as Key extends HttpMethod ? Key : never]: AddMethod<Key & HttpMethod>
-    & ExtractParameters<TPath[Key]>
-    & ExtractRequestBody<TPath[Key]>
-    // & ExtractMediaType2<ExtractMediaType<TPath[Key]>>
-    & ExtractMediaType2<TPath[Key]>
+type InlineMethod<TPath extends { [method in HttpMethod]?: unknown }> = {
+  [KMethod in keyof TPath]: KMethod extends HttpMethod
+    ? TransformOperation<KMethod, TPath[KMethod]>
+    : never
 }
+
+type TransformOperation<TMethod extends HttpMethod, TOperation> = AddMethod<TMethod>
+  & ExtractParameters<TOperation>
+  & ExtractRequestBody<TOperation>
+  & ExtractMediaType2<TOperation>
 
 type AddMethod<TMethod extends HttpMethod> = TMethod extends 'get' ? { method?: TMethod | Uppercase<TMethod> } : { method: TMethod | Uppercase<TMethod> }
 
@@ -126,23 +129,42 @@ type ToUnion<T extends Record<any, any>> = T[keyof T]
  * ```
  *
  */
-type ExtractParameters<T> = T extends { parameters: any } ? T['parameters'] : {}
-// : {
-//   query?: never
-//   header?: never
-//   path?: never
-//   cookie?: never
-// }
+type ExtractParameters<TOperation> = TOperation extends { parameters: unknown }
+  ? TOperation['parameters']
+  : unknown
+
+type F<T> = [T] extends [{ foo?: string }] ? 'foo' : 'bar'
+
+type T = F<{}>
+
+type KeysTest = keyof {
+  foo?: string
+  // bar: number
+}
+
+type KeyTest = ['foo'] extends [KeysTest] ? true : false
+type GenericKeyTest<T> = 'foo' extends T ? true : false
+type GenTest = GenericKeyTest<KeyTest>
 
 type ExtractRequestBody<T> = T extends { requestBody: { content: { [key: string]: any } } } ? {
   body: OperationRequestBodyContent<T>
   bodySerializer?: (body: OperationRequestBodyContent<T>) => any
-} : {}
+}
+  : 'requestBody' extends keyof T ? {
+    body?: OperationRequestBodyContent<T>
+    bodySerializer?: (body: NonNullable<OperationRequestBodyContent<T>>) => any
+  } : unknown
 // { body?: never, bodySerializer?: never }
 
-export type ExtractMediaType2<T> = T extends { responses: {
-  [key in OkStatus]?: { content: { [key in infer Media]: any } }
-} } ? { accept?: Media | Media[] } : {}
+// use this for bodySerializer stuff:
+type HasOnlyOneKey<T, K extends keyof T>
+  = keyof T extends [K] ? true : false
+
+export type ExtractMediaType2<T> = T extends {
+  responses: {
+    [key in OkStatus]?: { content: { [key in infer Media]: any } }
+  }
+} ? { accept?: Media | Media[] } : unknown
 // : { accept?: never }
 
 // export type ExtractMediaType2<TMedia> = TMedia extends string ? { accept?: TMedia | TMedia[] } : {}
@@ -163,6 +185,36 @@ export type OpenFetchOptions2<
 type RemoveNeverValues<T> = {
   [Key in keyof T as T[Key] extends never ? never : Key]: T[Key]
 }
+
+type TransformPathOptions<TPath> = any
+
+interface GenericPathsObject {
+  [path: string]: {
+    [method in HttpMethod]?: unknown
+  }
+}
+
+export type OpenFetchOptionsPaths<
+  TPaths,
+> = {
+  [TPath in keyof TPaths]: Merge<DefaultFetchOptions, PathToUnion<RemoveNeverValues<TPaths[TPath]>>>
+  // [TPath in keyof TPaths]: TPaths[TPath] extends { [method in HttpMethod]?: unknown }
+  //   ? Merge<DefaultFetchOptions, PathToUnion<RemoveNeverValues<TPaths[TPath]>>>
+  //   : never
+
+  // ? AddMethod<
+  //   ? 'get' extends Method
+  //     ? { method?: Method }
+  //     : { method: Method }
+  // // ? Merge<DefaultFetchOptions, { method?: Method }>
+  // // : Merge<DefaultFetchOptions, { method: Method }>
+  //   : DefaultFetchOptions
+  // : DefaultFetchOptions
+  // // ? { metho: Method }
+  // // ? Merge<DefaultFetchOptions, { method: Method }>
+  // // : DefaultFetchOptions
+}
+
 // ######
 
 type OpenFetchOptions<
@@ -183,7 +235,7 @@ type OpenFetchOptions<
   & Omit<FetchOptions, 'query' | 'body' | 'method'>
   & BodySerializerOption<RequestBodyOption<Operation>['body']>
 
-interface InternalOptions<TPaths, TPath extends keyof TPaths> {}
+interface InternalOptions<TPaths, TPath extends keyof TPaths> { }
 
 const paths = {
 

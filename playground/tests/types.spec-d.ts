@@ -1,5 +1,5 @@
 import type { paths } from '#open-fetch-schemas/api'
-import type { OpenFetchOptions2 } from 'nuxt-open-fetch'
+import type { OpenFetchOptionsPaths } from 'nuxt-open-fetch'
 import type { FetchOptions } from 'ofetch'
 import type { MediaType } from 'openapi-typescript-helpers'
 import type { Ref } from 'vue'
@@ -49,7 +49,7 @@ type Prettify<T> = {
 
 type Merge<T, U> = Prettify<Omit<T, keyof U> & U>
 
-describe('type OpenFetchOptions', () => {
+describe('type OpenFetchOptionsPaths', () => {
   type Body = FetchOptions['body']
   interface ExpectedDefault extends FetchOptions {
     path?: Record<string, string | number> | undefined
@@ -57,83 +57,115 @@ describe('type OpenFetchOptions', () => {
     bodySerializer?: ((body: Body) => Body) | undefined
   }
 
-  type PetO<T extends keyof paths> = OpenFetchOptions2<paths, T>
-
-  function foo<T extends keyof paths>(path: T, options: OpenFetchOptions2<paths, T>) {}
-
-  foo('/pet/{petId}/uploadImage', {
-    query: { }
+  it('accepts the generated `paths` type', () => {
+    type _ = OpenFetchOptionsPaths<paths>
   })
 
-  foo('/pet/{petId}', {
-    path: { petId: 42 },
-    method: '',
+  it('Outputs in `never` with wrong argument', () => {
+    type Output = OpenFetchOptionsPaths<any>
+    expectTypeOf<Output[string]>().toBeNever()
   })
 
-  type T = PetO<'/pet'>
-
-  const t: T = {
-    method: '',
-  }
-
-  it('has defaults', () => {
-    type DefaultFetchOptions = OpenFetchOptions2
-
-    expectTypeOf<DefaultFetchOptions>().toEqualTypeOf<ExpectedDefault>()
-  })
-
-  it('accepts an object parameter', () => {
-    expectTypeOf<OpenFetchOptions2<Record<any, never>>>().toEqualTypeOf<ExpectedDefault>()
-  })
-
-  it('has an object for each path', () => {
+  it('Outputs in `never` for malformed paths', () => {
     interface Paths {
-      '/foo': Record<any, never>
-      '/bar': Record<any, never>
+      '/foo': any
+      '/bar': any
     }
+    type Output = OpenFetchOptionsPaths<Paths>
 
-    expectTypeOf<OpenFetchOptions2<Paths, '/foo'>>().toEqualTypeOf<ExpectedDefault>()
-    expectTypeOf<OpenFetchOptions2<Paths, '/bar'>>().toEqualTypeOf<ExpectedDefault>()
+    expectTypeOf<Output>().toHaveProperty('/foo').toBeNever()
+    expectTypeOf<Output>().toHaveProperty('/bar').toBeNever()
   })
 
-  it('is a union with the passed methods as descriminator', () => {
+  it('fails on non-existing paths', () => {
+    interface Paths {
+      '/foo': Record<string, never>
+    }
+    type Output = OpenFetchOptionsPaths<Paths>
+
+    expectTypeOf<Output>().not.toHaveProperty('/non-existing')
+  })
+
+  it('creates unions with the passed methods as descriminators', () => {
     interface Paths {
       '/foo': {
-        get: Record<any, never>
+        get: unknown
       }
       '/bar': {
-        get: Record<any, never>
-        post: Record<any, never>
+        get: unknown
+        post: unknown
       }
-      '/baz': {
-        get: Record<any, never>
+    }
+
+    type Output = OpenFetchOptionsPaths<Paths>
+
+    type OutputFoo = Output['/foo']
+    type ExpectedFoo = Merge<ExpectedDefault, { method?: 'get' | 'GET' }>
+    expectTypeOf<OutputFoo>().toEqualTypeOf<ExpectedFoo>()
+    expectTypeOf<OutputFoo>().toHaveProperty('method').toEqualTypeOf<ExpectedFoo['method']>()
+
+    type OutputBar = Output['/bar']
+    type ExpectedBar = Merge<ExpectedDefault, { method?: 'get' | 'GET' } | { method: 'post' | 'POST' }>
+    expectTypeOf<OutputBar>().toEqualTypeOf<ExpectedBar>()
+    expectTypeOf<OutputBar>().toHaveProperty('method').toEqualTypeOf<ExpectedBar['method']>()
+  })
+
+  it('filters out methods with type `never`', () => {
+    interface Paths {
+      '/foo': {
+        get: unknown
         post: never
       }
     }
 
-    type TestFoo = OpenFetchOptions2<Paths, '/foo'>
+    type Output = OpenFetchOptionsPaths<Paths>
+
+    type OutputFoo = Output['/foo']
     type ExpectedFoo = Merge<ExpectedDefault, { method?: 'get' | 'GET' }>
-    expectTypeOf<TestFoo>().toEqualTypeOf<ExpectedFoo>()
-
-    type TestBar = OpenFetchOptions2<Paths, '/bar'>
-    type ExpectedBar = Merge<ExpectedDefault, { method?: 'get' | 'GET' } | { method: 'post' | 'POST' }>
-    expectTypeOf<TestBar>().toEqualTypeOf<ExpectedBar>()
-
-    type TestBaz = OpenFetchOptions2<Paths, '/baz'>
-    type ExpectedBaz = Merge<ExpectedDefault, { method?: 'get' | 'GET' }>
-    expectTypeOf<TestBaz>().toEqualTypeOf<ExpectedBaz>()
+    expectTypeOf<OutputFoo>().toEqualTypeOf<ExpectedFoo>()
+    expectTypeOf<OutputFoo>().toHaveProperty('method').toEqualTypeOf<ExpectedFoo['method']>()
   })
 
-  it('does not include the `parameters` key in the union', () => {
+  it('works with a generic type', () => {
     interface Paths {
       '/foo': {
-        parameters: Record<any, never>
-        get: Record<any, never>
+        get: unknown
+      }
+      '/bar': {
+        get: unknown
+        post: unknown
       }
     }
 
-    expectTypeOf<OpenFetchOptions2<Paths, '/foo'>>()
-      .toEqualTypeOf<Merge<ExpectedDefault, { method?: 'get' | 'GET' }>>()
+    type ApiOptions<TPath extends keyof Paths> = OpenFetchOptionsPaths<Paths>[TPath]
+
+    type OutputFoo = ApiOptions<'/foo'>
+    type ExpectedFoo = Merge<ExpectedDefault, { method?: 'get' | 'GET' }>
+    expectTypeOf<OutputFoo>().toEqualTypeOf<ExpectedFoo>()
+    expectTypeOf<OutputFoo['method']>().toEqualTypeOf<ExpectedFoo['method']>()
+
+    type OutputBar = ApiOptions<'/bar'>
+    type ExpectedBar = Merge<ExpectedDefault, { method?: 'get' | 'GET' } | { method: 'post' | 'POST' }>
+    expectTypeOf<OutputBar>().toEqualTypeOf<ExpectedBar>()
+    expectTypeOf<OutputBar['method']>().toEqualTypeOf<ExpectedBar['method']>()
+
+    // @ts-expect-error
+    type _ = ApiOptions<'/non-existing'>
+  })
+
+  it('does not include non-method keys in the union', () => {
+    interface Paths {
+      '/foo': {
+        parameters: unknown
+        get: unknown
+        unknownKey: unknown
+      }
+    }
+
+    type Output = OpenFetchOptionsPaths<Paths>
+    type Expected = Merge<ExpectedDefault, { method?: 'get' | 'GET' }>
+    expectTypeOf<Output['/foo']>().toEqualTypeOf<Expected>()
+    expectTypeOf<Output['/foo']['method']>().toEqualTypeOf<Expected['method']>()
   })
 
   it('has the right query type', () => {
@@ -153,6 +185,11 @@ describe('type OpenFetchOptions', () => {
             query: FooQuery
           }
         }
+        post: {
+          parameters: {
+            query?: BarQuery
+          }
+        }
       }
       '/bar': {
         post: {
@@ -163,13 +200,27 @@ describe('type OpenFetchOptions', () => {
       }
     }
 
-    type TestFoo = OpenFetchOptions2<Paths, '/foo'>
-    type ExpectedFoo = Merge<ExpectedDefault, { method?: 'get' | 'GET', query: FooQuery }>
-    expectTypeOf<TestFoo>().toEqualTypeOf<ExpectedFoo>()
+    type Output = OpenFetchOptionsPaths<Paths>
 
-    type TestBar = OpenFetchOptions2<Paths, '/bar'>
+    type OutputFoo = Output['/foo']
+    type ExpectedFoo = Merge<
+      ExpectedDefault,
+      { method?: 'get' | 'GET', query: FooQuery } | { method: 'post' | 'POST', query?: BarQuery }
+    >
+    expectTypeOf<OutputFoo>().toEqualTypeOf<ExpectedFoo>()
+    expectTypeOf<OutputFoo>()
+      .extract<{ method?: 'get' | 'GET' }>()
+      .toHaveProperty('query')
+      .toEqualTypeOf<FooQuery>()
+    expectTypeOf<OutputFoo>()
+      .extract<{ method: 'post' | 'POST' }>()
+      .toHaveProperty('query')
+      .toEqualTypeOf<BarQuery | undefined>()
+
+    type OutputBar = Output['/bar']
     type ExpectedBar = Merge<ExpectedDefault, { method: 'post' | 'POST', query?: BarQuery }>
-    expectTypeOf<TestBar>().toEqualTypeOf<ExpectedBar>()
+    expectTypeOf<OutputBar>().toEqualTypeOf<ExpectedBar>()
+    expectTypeOf<OutputBar>().toHaveProperty('query').toEqualTypeOf<BarQuery | undefined>()
   })
 
   it('has the right header type', () => {
@@ -199,13 +250,17 @@ describe('type OpenFetchOptions', () => {
       }
     }
 
-    type TestFoo = OpenFetchOptions2<Paths, '/foo'>
-    type ExpectedFoo = Merge<ExpectedDefault, { method?: 'get' | 'GET', header: FooHeader }>
-    expectTypeOf<TestFoo>().toEqualTypeOf<ExpectedFoo>()
+    type Output = OpenFetchOptionsPaths<Paths>
 
-    type TestBar = OpenFetchOptions2<Paths, '/bar'>
+    type OutputFoo = Output['/foo']
+    type ExpectedFoo = Merge<ExpectedDefault, { method?: 'get' | 'GET', header: FooHeader }>
+    expectTypeOf<OutputFoo>().toEqualTypeOf<ExpectedFoo>()
+    expectTypeOf<OutputFoo>().toHaveProperty('header').toEqualTypeOf<FooHeader>()
+
+    type OutputBar = Output['/bar']
     type ExpectedBar = Merge<ExpectedDefault, { method: 'post' | 'POST', header?: BarHeader }>
-    expectTypeOf<TestBar>().toEqualTypeOf<ExpectedBar>()
+    expectTypeOf<OutputBar>().toEqualTypeOf<ExpectedBar>()
+    expectTypeOf<OutputBar>().toHaveProperty('header').toEqualTypeOf<BarHeader | undefined>()
   })
 
   it('has the right path type', () => {
@@ -235,13 +290,17 @@ describe('type OpenFetchOptions', () => {
       }
     }
 
-    type TestFoo = OpenFetchOptions2<Paths, '/foo/{foo}/{bar}'>
-    type ExpectedFoo = Merge<ExpectedDefault, { method?: 'get' | 'GET', path: FooPath }>
-    expectTypeOf<TestFoo>().toEqualTypeOf<ExpectedFoo>()
+    type Output = OpenFetchOptionsPaths<Paths>
 
-    type TestBar = OpenFetchOptions2<Paths, '/bar/{baz}'>
+    type OutputFoo = Output['/foo/{foo}/{bar}']
+    type ExpectedFoo = Merge<ExpectedDefault, { method?: 'get' | 'GET', path: FooPath }>
+    expectTypeOf<OutputFoo>().toEqualTypeOf<ExpectedFoo>()
+    expectTypeOf<OutputFoo>().toHaveProperty('path').toEqualTypeOf<FooPath>()
+
+    type OutputBar = Output['/bar/{baz}']
     type ExpectedBar = Merge<ExpectedDefault, { method: 'post' | 'POST', path?: BarPath }>
-    expectTypeOf<TestBar>().toEqualTypeOf<ExpectedBar>()
+    expectTypeOf<OutputBar>().toEqualTypeOf<ExpectedBar>()
+    expectTypeOf<OutputBar>().toHaveProperty('path').toEqualTypeOf<BarPath | undefined>()
   })
 
   it('has the right cookie type', () => {
@@ -271,13 +330,17 @@ describe('type OpenFetchOptions', () => {
       }
     }
 
-    type TestFoo = OpenFetchOptions2<Paths, '/foo'>
-    type ExpectedFoo = Merge<ExpectedDefault, { method?: 'get' | 'GET', cookie: FooCookie }>
-    expectTypeOf<TestFoo>().toEqualTypeOf<ExpectedFoo>()
+    type Output = OpenFetchOptionsPaths<Paths>
 
-    type TestBar = OpenFetchOptions2<Paths, '/bar'>
+    type OutputFoo = Output['/foo']
+    type ExpectedFoo = Merge<ExpectedDefault, { method?: 'get' | 'GET', cookie: FooCookie }>
+    expectTypeOf<OutputFoo>().toEqualTypeOf<ExpectedFoo>()
+    expectTypeOf<OutputFoo>().toHaveProperty('cookie').toEqualTypeOf<FooCookie>()
+
+    type OutputBar = Output['/bar']
     type ExpectedBar = Merge<ExpectedDefault, { method: 'post' | 'POST', cookie?: BarCookie }>
-    expectTypeOf<TestBar>().toEqualTypeOf<ExpectedBar>()
+    expectTypeOf<OutputBar>().toEqualTypeOf<ExpectedBar>()
+    expectTypeOf<OutputBar>().toHaveProperty('cookie').toEqualTypeOf<BarCookie | undefined>()
   })
 
   it('has the right body type', () => {
@@ -312,33 +375,28 @@ describe('type OpenFetchOptions', () => {
       }
     }
 
-    type Test = OpenFetchOptions2<paths, '/pet/{petId}/uploadImage'>
+    type Output = OpenFetchOptionsPaths<Paths>
 
-    useApi('/pet/{petId}/uploadImage', {
-      method: 'post',
-      path: { petId: 1 },
-    })
-
-    type TestFoo = OpenFetchOptions2<Paths, '/foo'>
-    // const _t: TestFoo = {
-    //   body: {
-    //     foo: 'test'
-    //   },
-    // }
+    type OutputFoo = Output['/foo']
     type ExpectedFoo = Merge<
       ExpectedDefault,
       { method: 'post' | 'POST', body: FooBody, bodySerializer?: (body: FooBody) => any }
     >
-    expectTypeOf<TestFoo>().toEqualTypeOf<ExpectedFoo>()
+    expectTypeOf<OutputFoo>().toEqualTypeOf<ExpectedFoo>()
+    expectTypeOf<OutputFoo>().toHaveProperty('body').toEqualTypeOf<FooBody>()
 
-    type TestBar = OpenFetchOptions2<Paths, '/bar'>
-    // const _t2: TestBar = {
-    // }
+    type OutputBar = Output['/bar']
     type ExpectedBar = Merge<
       ExpectedDefault,
       { method: 'put' | 'PUT', body?: BarBody | undefined, bodySerializer?: (body: BarBody) => any }
     >
-    expectTypeOf<TestBar>().toEqualTypeOf<ExpectedBar>()
+    expectTypeOf<OutputBar>().toEqualTypeOf<ExpectedBar>()
+    expectTypeOf<OutputBar>()
+      .toHaveProperty('body')
+      .toEqualTypeOf<BarBody | undefined>()
+    expectTypeOf<OutputBar>()
+      .toHaveProperty('bodySerializer')
+      .toEqualTypeOf<((body: BarBody) => any) | undefined>()
   })
 
   it('has the right accept options', () => {
@@ -357,35 +415,19 @@ describe('type OpenFetchOptions', () => {
       }
     }
 
-    type TestFoo = OpenFetchOptions2<Paths, '/foo'>
+    type Output = OpenFetchOptionsPaths<Paths>
+
+    type ExpectedAcceptOptions
+      = | 'application/json'
+        | 'application/vnd.foo.v1+json'
+        | ('application/json' | 'application/vnd.foo.v1+json')[]
+        | undefined
     type ExpectedFoo = Merge<
       ExpectedDefault,
-      { method?: 'get' | 'GET', accept?: 'application/json' | 'application/vnd.foo.v1+json' | ('application/json' | 'application/vnd.foo.v1+json')[] | undefined }
+      { method?: 'get' | 'GET', accept?: ExpectedAcceptOptions }
     >
-    expectTypeOf<TestFoo>().toEqualTypeOf<ExpectedFoo>()
-  })
-
-  it('removes keys that are explicitly set to never', () => {
-    interface Paths {
-      '/foo': {
-        get: {
-          parameters: {
-            query?: never
-            header?: never
-            path?: never
-            cookie?: never
-          }
-          requestBody?: never
-        }
-      }
-    }
-
-    type TestFoo = OpenFetchOptions2<Paths, '/foo'>
-    type ExpectedFoo = Merge<
-      Omit<ExpectedDefault, 'query' | 'header' | 'path' | 'cookie' | 'body' | 'bodySerializer'>,
-      { method?: 'get' | 'GET' }
-    >
-    expectTypeOf<TestFoo>().toEqualTypeOf<ExpectedFoo>()
+    expectTypeOf<Output['/foo']>().toEqualTypeOf<ExpectedFoo>()
+    expectTypeOf<Output['/foo']>().toHaveProperty('accept').toEqualTypeOf<ExpectedAcceptOptions>()
   })
 })
 
